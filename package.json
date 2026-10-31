@@ -1,0 +1,26 @@
+{
+  "name": "liars-bar",
+  "version": "1.0.0",
+  "description": "骗子酒馆 - 局域网多人博弈游戏 (德州扑克子弹模式)",
+  "main": "server/embedded-server.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server/embedded-server.js",
+    "test:poker": "node test/test-poker.js",
+    "test:server": "node test/test-server-env.js && node test/test-server-auth.js",
+    "test": "node test/test-poker.js && node test/test-server-env.js && node test/test-server-auth.js",
+    "test:tabs": "node test-tabs.js",
+    "start": "npm run build && node server/embedded-server.js"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.2.0",
+    "vue": "^3.5.13"
+  }
+}

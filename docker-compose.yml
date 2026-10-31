@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  liars-bar:
+    build: .
+    container_name: liars-bar-game
+    restart: unless-stopped
+    ports:
+      - "${PORT:-9527}:9527"
+    environment:
+      - PORT=9527
+      - SERVER_ACCESS_KEY=${SERVER_ACCESS_KEY:-}
+      - IS_PUBLIC_CLOUD=true

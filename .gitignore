@@ -1,0 +1,38 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node dependencies
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment & Private Keys (防蹭服敏感数据，坚决不入库)
+.env
+.env*.local
+
+# Editor & OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Mobile & Build artifacts
+*.apk
+cordova-app/platforms/
+cordova-app/plugins/
+cordova-app/www/build/
+cordova-app/www/assets/
+cordova-app/www/nodejs-project/
+.gemini/

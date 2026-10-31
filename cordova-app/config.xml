@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.liarsbar.game" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>骗子酒馆</name>
+    <description>骗子酒馆 (Liar's Bar) - 局域网多人博弈游戏 (德州扑克子弹模式)</description>
+    <author email="dev@liarsbar.com" href="https://example.com">
+        Liar's Bar Team
+    </author>
+    <content src="index.html" />
+    
+    <access origin="*" />
+    <allow-navigation href="*" />
+    <allow-intent href="http://*/*" />
+    <allow-intent href="https://*/*" />
+    
+    <preference name="StatusBarOverlaysWebView" value="false" />
+    <preference name="StatusBarBackgroundColor" value="#ffffff" />
+    <preference name="Orientation" value="landscape" />
+    
+    <platform name="android">
+        <allow-intent href="market:*" />
+        <preference name="android-minSdkVersion" value="21" />
+        <preference name="android-targetSdkVersion" value="35" />
+        <preference name="android-compileSdkVersion" value="35" />
+    </platform>
+
+    <engine name="android" spec="^14.0.1" />
+    <plugin name="nodejs-mobile-cordova" spec="^0.4.3" />
+    <preference name="Fullscreen" value="true" />
+    <preference name="MixedContentMode" value="0" />
+</widget>
