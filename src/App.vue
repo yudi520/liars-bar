@@ -22,7 +22,7 @@
       :is-host="currentView === 'HOST'"
       :state="gameState"
       :server-info="serverInfo"
-      :my-id="mySocketId"
+      :my-id="myPlayerId()"
       @update-config="onUpdateConfig"
       @add-bot="onAddBot"
       @remove-player="onRemovePlayer"
@@ -41,7 +41,7 @@
       :is-host="currentView === 'HOST'"
       :state="gameState"
       :server-info="serverInfo"
-      :my-id="mySocketId"
+      :my-id="myPlayerId()"
       @update-config="onUpdateConfig"
       @add-bot="onAddBot"
       @remove-player="onRemovePlayer"
@@ -60,7 +60,7 @@
       :is-host="currentView === 'HOST'"
       :state="gameState"
       :server-info="serverInfo"
-      :my-id="mySocketId"
+      :my-id="myPlayerId()"
       @update-config="onUpdateConfig"
       @add-bot="onAddBot"
       @remove-player="onRemovePlayer"
@@ -152,6 +152,108 @@ let toastTimer = null;
 // 自定义房主信息
 const myHostProfile = ref({ name: '酒馆老板', avatar: '👑' });
 
+// ================================================================
+// P0 多房间状态（8.3）：currentRoomId + lb.room 持久化 + 自愈入座
+// ================================================================
+const ROOM_STORAGE_KEY = 'lb.room';
+const currentRoomId = ref(null);
+const savedRoom = ref(null);          // { roomId, name, avatar, isHost }
+let pendingRoomOp = false;            // 建房/入座请求在途标记（防止自愈与响应竞态）
+let pendingView = null;               // P1-2：入座确认后才切换的视图（失败留在表单）
+
+function loadSavedRoom() {
+  try {
+    // 用 sessionStorage（每标签页独立）：刷新可恢复入座，但新标签页/新窗口
+    // 不会被别的窗口的房间上下文劫持（localStorage 会跨标签共享导致误恢复）
+    const raw = JSON.parse(sessionStorage.getItem(ROOM_STORAGE_KEY) || 'null');
+    return raw && raw.roomId ? raw : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function enterRoom(roomId, { name, avatar, isHost }) {
+  currentRoomId.value = roomId;
+  socketService.setRoomId(roomId);
+  savedRoom.value = { roomId, name: name || '', avatar: avatar || '', isHost: Boolean(isHost) };
+  try {
+    sessionStorage.setItem(ROOM_STORAGE_KEY, JSON.stringify(savedRoom.value));
+  } catch (e) {}
+}
+
+function clearCurrentRoom() {
+  currentRoomId.value = null;
+  socketService.setRoomId(null);
+  savedRoom.value = null;
+  try {
+    sessionStorage.removeItem(ROOM_STORAGE_KEY);
+  } catch (e) {}
+}
+
+// ================================================================
+// P1-2 resumeToken 持久化（8.3）：token 与 requestId 同存、重试复用同一 requestId
+// ================================================================
+function resumeKey(roomId) {
+  return 'lb.resume.' + roomId;
+}
+
+function loadResume(roomId) {
+  try {
+    return JSON.parse(sessionStorage.getItem(resumeKey(roomId)) || 'null');
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveResume(roomId, token) {
+  if (!roomId || !token) return;
+  let requestId;
+  try {
+    requestId = (crypto.randomUUID && crypto.randomUUID()) || ('rq_' + Date.now() + '_' + Math.floor(Math.random() * 1e9));
+  } catch (e) {
+    requestId = 'rq_' + Date.now();
+  }
+  const rec = { token, requestId, expiresAt: Date.now() + 2 * 60 * 60 * 1000 };
+  try {
+    sessionStorage.setItem(resumeKey(roomId), JSON.stringify(rec));
+  } catch (e) {}
+}
+
+function clearResume(roomId) {
+  if (!roomId) return;
+  try {
+    sessionStorage.removeItem(resumeKey(roomId));
+  } catch (e) {}
+}
+
+/** P1-1：前端自报能力（4.5），服务端按会话投影快照。必须在任何入座操作前发送。 */
+function announceClientCapability() {
+  socketService.send('CLIENT_HELLO', { version: '1.1' });
+}
+
+function leaveCurrentRoomLocal() {
+  clearResume(currentRoomId.value);
+  clearCurrentRoom();
+}
+
+/**
+ * 关键自愈兜底（8.3）：在房视图中检测到本人未入座时，按持久化的
+ * 房间号 + 昵称补发 JOIN_ROOM（不再传 isHost，房主归属由服务端重绑判定）。
+ */
+function healJoin() {
+  if (currentView.value !== 'HOST' && currentView.value !== 'PLAYER') return;
+  if (pendingRoomOp) return;
+  const saved = savedRoom.value;
+  if (!saved || !saved.roomId) return;
+  const seated = (gameState.value.players || []).some(p => p.id === mySocketId.value);
+  if (seated) return;
+  socketService.send('JOIN_ROOM', {
+    roomId: saved.roomId,
+    name: saved.name,
+    avatar: saved.avatar
+  });
+}
+
 // 移动端横竖屏检测与引导提示
 const isPortrait = ref(false);
 const showPortraitHint = ref(true);
@@ -172,6 +274,11 @@ function showToast(msg) {
   toastTimer = setTimeout(() => {
     toastMessage.value = '';
   }, 2800);
+}
+
+// P1-1：本人在帧里的稳定 ID（新协议）——回退到 socketId 兼容 P0 服务端
+function myPlayerId() {
+  return (gameState.value.self && gameState.value.self.playerId) || mySocketId.value;
 }
 
 const gameState = ref({
@@ -253,17 +360,26 @@ onMounted(async () => {
     if (data.state) {
       gameState.value = data.state;
     }
-    // 关键自愈兜底：若当前在房主视图但房间内尚未有房主入座，自动补发 JOIN_ROOM
-    if (currentView.value === 'HOST') {
-      const hasHost = data.state?.players?.some(p => p.isHost && !p.isBot);
-      if (!hasHost) {
-        socketService.send('JOIN_ROOM', {
-          name: myHostProfile.value.name,
-          avatar: myHostProfile.value.avatar,
-          isHost: true,
-          mode: gameState.value.mode
-        });
+    // 刷新页面恢复（8.3）：lb.room 存在则恢复视图并重新入座；失败由 ERROR 处理器回大厅
+    announceClientCapability();   // P1-1：先声明能力，再入座（保证快照投影模式一致）
+    savedRoom.value = loadSavedRoom();
+    if (savedRoom.value && savedRoom.value.roomId && currentView.value === 'HOME') {
+      currentRoomId.value = savedRoom.value.roomId;
+      socketService.setRoomId(savedRoom.value.roomId);
+      currentView.value = savedRoom.value.isHost ? 'HOST' : 'PLAYER';
+      if (savedRoom.value.isHost && savedRoom.value.name) {
+        myHostProfile.value = { name: savedRoom.value.name, avatar: savedRoom.value.avatar || '👑' };
       }
+      // P1-2：优先 resumeToken 恢复（保留手牌）；失败由 ERROR 处理器回退 name 重绑
+      const resume = loadResume(savedRoom.value.roomId);
+      if (resume && resume.token && resume.requestId) {
+        pendingRoomOp = true;
+        socketService.send('RESUME_SESSION', { resumeToken: resume.token, requestId: resume.requestId });
+      } else {
+        healJoin();
+      }
+    } else {
+      healJoin();
     }
   });
 
@@ -272,6 +388,10 @@ onMounted(async () => {
   });
 
   socketService.on('state_update', (newState) => {
+    // 串房防护（8.3）：不属于当前房间的帧直接丢弃，防止"人在 A 房界面、状态来自 B 房"
+    if (currentRoomId.value && newState?.roomId && newState.roomId !== currentRoomId.value) {
+      return;
+    }
     if (newState?.status === 'GAME_OVER' && gameState.value?.status !== 'GAME_OVER') {
       showVictoryBanner.value = true;
     } else if (newState?.status !== 'GAME_OVER') {
@@ -279,23 +399,148 @@ onMounted(async () => {
     }
 
     gameState.value = newState;
-    // 若当前在房主界面且房间内尚无本人/房主，自动补发入座指令
-    if (currentView.value === 'HOST') {
-      const hasHost = newState?.players?.some(p => p.isHost && !p.isBot);
-      if (!hasHost) {
-        socketService.send('JOIN_ROOM', {
-          name: myHostProfile.value.name,
-          avatar: myHostProfile.value.avatar,
-          isHost: true,
-          mode: gameState.value.mode
-        });
+    if (newState?.roomId && !currentRoomId.value) {
+      // 无码入座（MAIN）等场景：从服务端帧学习当前房间号
+      const saved = savedRoom.value;
+      enterRoom(newState.roomId, {
+        name: saved?.name || myHostProfile.value.name,
+        avatar: saved?.avatar || myHostProfile.value.avatar,
+        isHost: Boolean(newState.self?.isHost)
+      });
+    }
+    pendingRoomOp = false;
+    if (pendingView && currentView.value === 'HOME') {
+      currentView.value = pendingView;   // 入座确认，切换视图
+    }
+    pendingView = null;
+    healJoin();
+  });
+
+  // —— P1-2 断线重连（7.2.1）：RESUME_OK 携带轮换后的新 token ——
+  socketService.on('resume_ok', (payload) => {
+    pendingRoomOp = false;
+    if (pendingView && currentView.value === 'HOME') {
+      currentView.value = pendingView;
+    }
+    pendingView = null;
+    if (payload?.roomId) {
+      enterRoom(payload.roomId, {
+        name: savedRoom.value?.name || myHostProfile.value.name,
+        avatar: savedRoom.value?.avatar || myHostProfile.value.avatar,
+        isHost: Boolean(payload.state?.self?.isHost)
+      });
+      if (payload.resumeToken) {
+        saveResume(payload.roomId, payload.resumeToken);  // 新 token 配新 requestId，重试仍复用
       }
+    }
+    if (payload?.state) {
+      gameState.value = payload.state;
     }
   });
 
-  socketService.on('room_disbanded', (msg) => {
-    showToast(msg || '房主已解散房间');
+  // —— P1-2：入座/重绑后服务端签发（轮换）resumeToken ——
+  socketService.on('seat_token', (payload) => {
+    if (payload?.roomId && payload?.resumeToken) {
+      saveResume(payload.roomId, payload.resumeToken);
+    }
+  });
+
+  // —— P1：房主移交后新 host 收到双凭证 ——
+  socketService.on('host_transferred', (payload) => {
+    if (payload?.roomId && payload?.resumeToken) {
+      saveResume(payload.roomId, payload.resumeToken);
+      showToast('房主已将酒馆移交给你！');
+    }
+  });
+
+  // —— P1：会话被显式撤销（房主/本人操作）——
+  socketService.on('sessions_revoked', (payload) => {
+    if (payload?.playerId && payload.playerId !== mySocketId.value && payload.playerId !== myPlayerId()) {
+      return; // 撤销的是别人
+    }
+    showToast('会话已被撤销，请重新入座');
     currentView.value = 'HOME';
+    clearCurrentRoom();
+  });
+
+  // —— 多房间协议事件（4.1）——
+  socketService.on('room_created', (payload) => {
+    pendingRoomOp = false;
+    if (payload?.roomId) {
+      enterRoom(payload.roomId, {
+        name: myHostProfile.value.name,
+        avatar: myHostProfile.value.avatar,
+        isHost: true
+      });
+      if (payload.resumeToken) {
+        saveResume(payload.roomId, payload.resumeToken);
+      }
+    }
+    if (payload?.state) {
+      gameState.value = payload.state;
+    }
+  });
+
+  socketService.on('room_closed', (payload) => {
+    const closedId = payload?.roomId;
+    if (closedId && currentRoomId.value && closedId !== currentRoomId.value) return;
+    showToast(payload?.message || '房主已解散房间，已退回大厅。');
+    currentView.value = 'HOME';
+    clearResume(currentRoomId.value);
+    clearCurrentRoom();
+  });
+
+  socketService.on('kicked', () => {
+    showToast('你已被房主请离房间');
+    currentView.value = 'HOME';
+    clearResume(currentRoomId.value);
+    clearCurrentRoom();
+  });
+
+  socketService.on('server_shutdown', () => {
+    showToast('服务器维护中，房间即将失效，请稍后重新建房。');
+  });
+
+  socketService.on('error', (payload) => {
+    const code = payload?.code;
+    const message = payload?.message || '操作失败';
+    const wasPending = pendingRoomOp;
+    pendingRoomOp = false;
+    if (wasPending) {
+      pendingView = null;   // 入座失败：留在 HOME 表单（WRONG_PASSWORD 已单独处理提示）
+    }
+    // P1-2：RESUME 失败 → 清掉失效凭证，回退 name 三条件重绑（不弹回大厅）
+    if (code === 'RESUME_EXPIRED' || code === 'RESUME_REPLAYED') {
+      clearResume(currentRoomId.value);
+      showToast('快速恢复失败，正在尝试重新入座…');
+      healJoin();
+      return;
+    }
+    if (code === 'RESUME_RATE_LIMITED') {
+      showToast('恢复尝试过于频繁，请稍后重试或重新入座。');
+      return;
+    }
+    // P1-2：房间密码错误 → 只提示，留在加入表单（不清表单状态，用户改密码直接重试）
+    if (code === 'WRONG_PASSWORD') {
+      showToast(message);
+      return;
+    }
+    if (code === 'ROOM_NOT_FOUND') {
+      showToast('房间已不存在（服务器重启后房间会消失），请重新建房或加入。');
+      currentView.value = 'HOME';
+      clearResume(currentRoomId.value);
+      clearCurrentRoom();
+      return;
+    }
+    if (wasPending && code !== 'NOT_HOST') {
+      // 在途的建房/入座失败（房间满、对局中、重名等）：回大厅并清空本地房间状态
+      showToast(message);
+      currentView.value = 'HOME';
+      clearResume(currentRoomId.value);
+      clearCurrentRoom();
+      return;
+    }
+    showToast(message);
   });
 
   socketService.on('unauthorized_access_key', (msg) => {
@@ -307,7 +552,7 @@ onMounted(async () => {
     showToast(msg);
   });
 
-  // 支持 URL 参数快捷进入 (方便多标签页调试测试)
+  // 支持 URL 参数快捷进入 (方便多标签页调试测试)；?room=R7K2M9 输码直达（8.1）
   const params = new URLSearchParams(window.location.search);
   if (params.get('host') === '1') {
     setTimeout(() => {
@@ -317,8 +562,9 @@ onMounted(async () => {
     const name = params.get('name');
     const avatars = ['🦊', '🐺', '🐻', '🐵', '🐶', '🦁', '🤠'];
     const avatar = params.get('avatar') || avatars[Math.floor(Math.random() * avatars.length)];
+    const roomCode = params.get('room');
     setTimeout(() => {
-      onJoinPlayer({ name, avatar });
+      onJoinPlayer({ name, avatar, roomCode });
     }, 400);
   }
 });
@@ -386,6 +632,7 @@ function onCancelRoom() {
     type: 'danger',
     onConfirm: () => {
       socketService.send('CANCEL_ROOM');
+      leaveCurrentRoomLocal();
       currentView.value = 'HOME';
     }
   });
@@ -401,11 +648,10 @@ function onLeaveRoom() {
     cancelText: '取消',
     type: 'warning',
     onConfirm: () => {
+      // P0 改造（8.3）：改用 LEAVE_ROOM 消息离座，不再断开重连
+      socketService.send('LEAVE_ROOM');
+      leaveCurrentRoomLocal();
       currentView.value = 'HOME';
-      socketService.disconnect();
-      setTimeout(() => {
-        socketService.connect();
-      }, 400);
     }
   });
 }
@@ -427,31 +673,37 @@ function onStartHost(profile) {
     else chosenMode = 'LIARS_DECK';
   }
 
-  socketService.send('JOIN_ROOM', {
+  // P0 改造（4.1/8.2）：创建房间改为 CREATE_ROOM，config 随载荷下发；
+  // 房间号由服务端在 ROOM_CREATED 返回（单间模式下为 MAIN）。
+  // P1-2：房间密码（可选，创建私密房间）。
+  pendingRoomOp = true;
+  socketService.send('CREATE_ROOM', {
     name: myHostProfile.value.name,
     avatar: myHostProfile.value.avatar,
-    isHost: true,
     mode: chosenMode,
-    config: profile?.config
+    config: profile?.config || null,
+    password: profile?.password || null
   });
-  if (profile?.config) {
-    socketService.send('UPDATE_CONFIG', profile.config);
-  }
   currentView.value = 'HOST';
 }
 
-async function onJoinPlayer({ name, avatar, targetHostIp, accessKey }) {
+async function onJoinPlayer({ name, avatar, targetHostIp, accessKey, roomCode, roomPassword }) {
   initAudio();
   if (targetHostIp) {
     await socketService.connectToHost(targetHostIp);
   }
-  socketService.send('JOIN_ROOM', {
-    name,
-    avatar,
-    isHost: false,
-    accessKey
-  });
-  currentView.value = 'PLAYER';
+  const code = String(roomCode || '').toUpperCase().trim();
+  pendingRoomOp = true;
+  pendingView = 'PLAYER';   // 视图切换推迟到入座确认：密码错误等失败留在表单
+  if (code) {
+    // 输码入座（8.2）：roomId 随载荷下发；P1-2 携带房间密码
+    enterRoom(code, { name, avatar, isHost: false });
+    socketService.send('JOIN_ROOM', { roomId: code, name, avatar, password: roomPassword || null });
+  } else {
+    // 无码 → MAIN 兼容路径（单间 APK / 旧服务端语义）
+    enterRoom('MAIN', { name, avatar, isHost: false });
+    socketService.send('JOIN_ROOM', { name, avatar });
+  }
 }
 
 function onUpdateConfig(config) {

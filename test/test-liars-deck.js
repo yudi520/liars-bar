@@ -23,7 +23,9 @@ async function runTests() {
       { id: 'p2', name: '玩家B', isHost: false, isBot: false, connected: true, isAlive: true, cards: [] },
       { id: 'p3', name: '玩家C', isHost: false, isBot: false, connected: true, isAlive: true, cards: [] }
     ],
-    broadcastState: () => {}
+    broadcastState: () => {},
+    setTimer: (fn, ms) => setTimeout(fn, ms),
+    clearTimer: (t) => clearTimeout(t)
   };
   const game = new LiarsDeckGame(mockRoom);
   const lobbySnapshot = game.getStateSnapshot('p1');

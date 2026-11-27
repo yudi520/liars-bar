@@ -10,9 +10,11 @@
     "server": "node server/embedded-server.js",
     "test:poker": "node test/test-poker.js",
     "test:server": "node test/test-server-env.js && node test/test-server-auth.js",
-    "test": "node test/test-poker.js && node test/test-server-env.js && node test/test-server-auth.js",
+    "test": "node test/test-poker.js && node test/test-liars-deck.js && node test/test-liars-dice.js && node test/test-showdown-tiebreaker.js && node test/test-server-env.js && node test/test-server-auth.js && node test/test-multi-room-unit.js && node test/test-p1.js && node test/test-multi-room-e2e-runall.js && node test/load/load-test.js",
     "test:tabs": "node test-tabs.js",
-    "start": "npm run build && node server/embedded-server.js"
+    "start": "npm run build && node server/embedded-server.js",
+    "test:load": "node test/load/load-test.js",
+    "test:load-full": "ROOMS=500 DURATION_MS=60000 node test/load/load-test.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

@@ -40,6 +40,8 @@
         <span class="extra-tag dice-count-tag">🎲 {{ state.config.dicePerPlayer || 5 }}颗/人</span>
         <span v-if="state.config.enableLockOne" class="extra-tag lock1">🔒 叫1锁1</span>
         <span v-if="state.config.enableSpotOn" class="extra-tag spot">🎯 精确命中</span>
+        <!-- P0 多房间：房间码徽章（点击复制分享） -->
+        <RoomCodePill v-if="state?.roomId && state.roomId !== 'MAIN'" :room-id="state.roomId" />
       </div>
 
       <div class="nav-right">
@@ -112,9 +114,19 @@
               </template>
             </div>
           </div>
+
+          <!-- 大厅阶段房主踢人按钮（P0 多房间） -->
+          <button
+            v-if="isHost && state.status === 'LOBBY' && !player.isHost"
+            class="kick-btn"
+            title="请出酒馆"
+            @click="$emit('remove-player', player.id)"
+          >
+            ✕
+          </button>
         </div>
 
-        <!-- 席位翻开的骰子 (验骰阶段其他玩家展示；若超过5颗同样分上下两排半尺寸展示) -->
+<!-- 席位翻开的骰子 (验骰阶段其他玩家展示；若超过5颗同样分上下两排半尺寸展示) -->
         <div v-if="player.id !== myId && shouldShowPlayerDice(player)" class="seat-cup-area">
           <div class="dice-revealed-tray" :class="{ 'is-double-row': player.dice && player.dice.length > 5 }">
             <template v-if="player.dice && player.dice.length > 5">
@@ -570,6 +582,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import RealDice from './RealDice.vue';
 import LiarsDiceGuide from './LiarsDiceGuide.vue';
+import RoomCodePill from './RoomCodePill.vue';
 import { sounds } from '../utils/audio';
 
 const props = defineProps({
@@ -1343,6 +1356,22 @@ async function savePosterImage() {
   gap: 4px;
   transition: all 0.3s ease;
   z-index: 10;
+}
+
+/* 大厅阶段房主踢人按钮 */
+.kick-btn {
+  position: absolute;
+  top: -4px;
+  right: -10px;
+  background: #ef4444;
+  border: none;
+  color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  cursor: pointer;
+  z-index: 5;
 }
 
 /* 0号席位: 正下方 (本人) */

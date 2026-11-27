@@ -89,15 +89,15 @@ class LiarsDiceGame {
 
   clearAllTimers() {
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
     if (this.rollingTimer) {
-      clearTimeout(this.rollingTimer);
+      this.room.clearTimer(this.rollingTimer);
       this.rollingTimer = null;
     }
     if (this.roundTimer) {
-      clearTimeout(this.roundTimer);
+      this.room.clearTimer(this.roundTimer);
       this.roundTimer = null;
     }
     this.turnDeadline = 0;
@@ -180,7 +180,7 @@ class LiarsDiceGame {
     this.room.broadcastState();
 
     // 3. 摇盅动画 1200ms 后正式进入 BIDDING 阶段
-    this.rollingTimer = setTimeout(() => {
+    this.rollingTimer = this.room.setTimer(() => {
       this.rollingTimer = null;
       this.status = 'BIDDING';
       this.resetTurnCountdown();
@@ -191,7 +191,7 @@ class LiarsDiceGame {
 
   resetTurnCountdown() {
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
     const player = this.room.players.find(p => p.id === this.currentTurnPlayerId);
@@ -200,7 +200,7 @@ class LiarsDiceGame {
       return;
     }
     this.turnDeadline = Date.now() + 20000;
-    this.turnTimer = setTimeout(() => {
+    this.turnTimer = this.room.setTimer(() => {
       this.turnTimer = null;
       this.handleTurnTimeout();
     }, 20000);
@@ -408,7 +408,7 @@ class LiarsDiceGame {
     };
 
     // 延迟 4500ms 执行惩罚动效，充分留足验骰与清点查看时间
-    setTimeout(() => {
+    this.room.setTimer(() => {
       this.executePunishment(loser, winner.id, challengeContext);
     }, 4500);
   }
@@ -450,7 +450,7 @@ class LiarsDiceGame {
     if (isExactMatch) {
       this.addLog(`🌟【神准奇迹】精确命中成功！实际数量分毫不差！发起者【${caller.name}】封神，除其以外全场其余玩家均须受罚！`);
       this.room.broadcastState();
-      setTimeout(() => {
+      this.room.setTimer(() => {
         const otherVictims = this.room.players.filter(p => p.isAlive && p.id !== caller.id);
         this.executeBatchPunishment(otherVictims, caller.id);
       }, 4500);
@@ -462,7 +462,7 @@ class LiarsDiceGame {
         callerName: caller.name,
         isExactMatch: false
       };
-      setTimeout(() => {
+      this.room.setTimer(() => {
         this.executePunishment(caller, this.currentBid.playerId, spotContext);
       }, 4500);
     }
@@ -630,11 +630,11 @@ class LiarsDiceGame {
   checkGameContinuation(nextStarterId) {
     const alivePlayers = this.room.players.filter(p => p.isAlive);
     if (alivePlayers.length <= 1) {
-      setTimeout(() => {
+      this.room.setTimer(() => {
         this.endGame();
       }, 3500);
     } else {
-      setTimeout(() => {
+      this.room.setTimer(() => {
         this.startNextRound(nextStarterId);
       }, 5000);
     }
@@ -667,12 +667,12 @@ class LiarsDiceGame {
     if (!curPlayer.isBot && curPlayer.connected && !curPlayer.isOffline) return;
 
     if (this.aiTimer) {
-      clearTimeout(this.aiTimer);
+      this.room.clearTimer(this.aiTimer);
       this.aiTimer = null;
     }
 
     const delay = 1200 + Math.random() * 1200;
-    this.aiTimer = setTimeout(() => {
+    this.aiTimer = this.room.setTimer(() => {
       this.aiTimer = null;
       try {
         if (this.status !== 'BIDDING' || this.currentTurnPlayerId !== curPlayer.id) return;
@@ -819,7 +819,7 @@ class LiarsDiceGame {
       revealEvent: this.revealEvent,
       punishEvent: this.punishEvent,
       roundBids: [...this.roundBids],
-      logs: [...this.logs],
+      logs: [...this.logs].slice(0, 20), // 战报裁剪（6.3）：快照只发最近 20 条
       players: this.room.players.map(p => {
         const isSelf = p.id === viewerPlayerId;
         const showDice = isSelf || canSeeAll;

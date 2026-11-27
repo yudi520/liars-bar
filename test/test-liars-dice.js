@@ -28,7 +28,9 @@ async function runDiceTests() {
       { id: 'p2', name: '玩家B', isAlive: true, connected: true, poisonDrunk: 0, bulletsFired: 0 },
       { id: 'p3', name: '玩家C', isAlive: true, connected: true, poisonDrunk: 0, bulletsFired: 0 }
     ],
-    broadcastState: () => {}
+    broadcastState: () => {},
+    setTimer: (fn, ms) => setTimeout(fn, ms),
+    clearTimer: (t) => clearTimeout(t)
   };
 
   const game = new LiarsDiceGame(mockRoom);

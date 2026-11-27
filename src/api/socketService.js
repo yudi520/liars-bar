@@ -14,7 +14,13 @@ class SocketService {
     this.serverInfo = null;
     this.reconnectTimer = null;
     this.reconnectAttempts = 0;
-    this.pendingQueue = []; // 待发送消息队列，避免连接完成前消息被丢弃
+    this.pendingQueue = []; // [{ msg, ts }] 待发送消息队列，避免连接完成前消息被丢弃
+    this.currentRoomId = null; // P0 多房间：当前房间号（8.4）
+  }
+
+  /** 入座成功后由 App.vue 调用，用于自愈补发与断线重连后恢复会话上下文 */
+  setRoomId(roomId) {
+    this.currentRoomId = roomId || null;
   }
 
   setTargetHost(ip) {
@@ -142,14 +148,16 @@ class SocketService {
           this.reconnectTimer = null;
         }
 
-        // 发送所有在连接建立前暂存的指令 (如 JOIN_ROOM, ADD_BOT 等)
+        // 发送所有在连接建立前暂存的指令 (如 JOIN_ROOM, ADD_BOT 等)。
+        // 断线超过 60 秒的指令视为过期，直接丢弃（8.4），避免重连后补发陈旧指令。
         if (this.pendingQueue.length > 0) {
-          const queue = [...this.pendingQueue];
+          const now = Date.now();
+          const alive = this.pendingQueue.filter(e => now - e.ts < 60000);
           this.pendingQueue = [];
-          for (const msg of queue) {
+          for (const entry of alive) {
             try {
-              this.ws.send(JSON.stringify(msg));
-              console.log('[SocketService] 已补发暂存指令:', msg.type);
+              this.ws.send(JSON.stringify(entry.msg));
+              console.log('[SocketService] 已补发暂存指令:', entry.msg.type);
             } catch (e) {
               console.error('[SocketService] 补发暂存指令失败:', e);
             }
@@ -171,8 +179,32 @@ class SocketService {
             this.emit('state_update', data.state);
           } else if (data.type === 'SWITCH_CANDIDATES_RESPONSE') {
             this.emit('switch_candidates', data.candidates);
+          } else if (data.type === 'ROOM_CREATED') {
+            this.emit('room_created', data.payload);
+          } else if (data.type === 'ROOM_CLOSED') {
+            this.emit('room_closed', data.payload);
           } else if (data.type === 'ROOM_DISBANDED') {
+            // 兼容双发（8.4）：旧服务端消息映射到 room_closed
+            this.emit('room_closed', { reason: 'disbanded', message: data.message });
             this.emit('room_disbanded', data.message);
+          } else if (data.type === 'KICKED') {
+            this.emit('kicked', data.payload);
+          } else if (data.type === 'ERROR') {
+            this.emit('error', data.payload);
+          } else if (data.type === 'SERVER_SHUTDOWN') {
+            this.emit('server_shutdown', data.payload);
+          } else if (data.type === 'SEAT_TOKEN') {
+            // P1-2：入座/重绑后的重连凭证
+            this.emit('seat_token', data.payload);
+          } else if (data.type === 'RESUME_OK') {
+            // P1-2：断线恢复成功（携带轮换后的新 token）
+            this.emit('resume_ok', data.payload);
+          } else if (data.type === 'HOST_TRANSFERRED') {
+            // P1：房主移交，新 host 收到双凭证
+            this.emit('host_transferred', data.payload);
+          } else if (data.type === 'SESSIONS_REVOKED') {
+            // P1：会话被显式撤销
+            this.emit('sessions_revoked', data.payload);
           } else if (data.type === 'UNAUTHORIZED_ACCESS_KEY') {
             this.emit('unauthorized_access_key', data.message);
           } else if (data.type === 'ERROR_NOTICE') {
@@ -203,13 +235,20 @@ class SocketService {
     }
   }
 
+  /**
+   * 指数退避 + 抖动（8.4 / 7.5）：1s → 2s → 4s ... 上限 30s，±30% 抖动。
+   * 替代旧的固定 1000ms——避免进程重启时形成重连风暴。
+   */
   scheduleReconnect() {
     if (this.reconnectTimer) return;
     this.reconnectAttempts += 1;
+    const base = Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts - 1));
+    const jitter = base * (Math.random() * 0.6 - 0.3); // ±30%
+    const delay = Math.max(500, Math.round(base + jitter));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, 1000);
+    }, delay);
   }
 
   disconnect() {
@@ -228,7 +267,7 @@ class SocketService {
   }
 
   send(type, payload = {}) {
-    if (type === 'JOIN_ROOM') {
+    if (type === 'JOIN_ROOM' || type === 'CREATE_ROOM' || type === 'QUICK_JOIN') {
       if (!payload.accessKey) {
         const key = getServerAccessKey();
         if (key) payload.accessKey = key;
@@ -239,7 +278,7 @@ class SocketService {
       this.ws.send(JSON.stringify(msg));
     } else {
       console.log('[SocketService] WS 尚未就绪，指令暂存待发:', type);
-      this.pendingQueue.push(msg);
+      this.pendingQueue.push({ msg, ts: Date.now() });
       if (!this.connected) {
         this.connect();
       }

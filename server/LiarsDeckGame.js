@@ -107,11 +107,11 @@ class LiarsDeckGame {
    */
   startNextHand() {
     if (this.nextHandTimer) {
-      clearTimeout(this.nextHandTimer);
+      this.room.clearTimer(this.nextHandTimer);
       this.nextHandTimer = null;
     }
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
 
@@ -164,7 +164,7 @@ class LiarsDeckGame {
    */
   resetTurnCountdown() {
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
     const player = this.room.players.find(p => p.id === this.currentTurnPlayerId);
@@ -173,7 +173,7 @@ class LiarsDeckGame {
       return;
     }
     this.turnDeadline = Date.now() + 20000;
-    this.turnTimer = setTimeout(() => {
+    this.turnTimer = this.room.setTimer(() => {
       this.handleTurnTimeout();
     }, 20000);
   }
@@ -318,7 +318,7 @@ class LiarsDeckGame {
     if (!challenger || !prevPlayer) throw new Error('玩家信息无效！');
 
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
 
@@ -340,7 +340,7 @@ class LiarsDeckGame {
     this.room.broadcastState();
 
     // 延迟 1.8 秒揭晓结果
-    setTimeout(() => {
+    this.room.setTimer(() => {
       // 1. 核心判定：是否包含 😈 恶魔卡
       const hasDevil = revealedCards.some(c => c.type === 'DEVIL');
 
@@ -365,7 +365,7 @@ class LiarsDeckGame {
         this.addLog(`😈 翻出恶魔牌！【${prevPlayer.name}】免受惩罚，其余所有玩家直面轮盘赌！`);
         this.room.broadcastState();
 
-        setTimeout(() => {
+        this.room.setTimer(() => {
           this.executeRouletteQueue(victims);
         }, 3200);
         return;
@@ -391,7 +391,7 @@ class LiarsDeckGame {
         this.addLog(`🚨 【${prevPlayer.name}】撒谎，接受开枪！`);
         this.room.broadcastState();
 
-        setTimeout(() => {
+        this.room.setTimer(() => {
           this.executeRouletteQueue(victims);
         }, 3000);
       } else {
@@ -411,7 +411,7 @@ class LiarsDeckGame {
         this.addLog(`🛡️ 【${prevPlayer.name}】没撒谎，【${challenger.name}】质疑失败受罚！`);
         this.room.broadcastState();
 
-        setTimeout(() => {
+        this.room.setTimer(() => {
           this.executeRouletteQueue(victims);
         }, 3000);
       }
@@ -435,7 +435,7 @@ class LiarsDeckGame {
     if (!caller || !caller.isAlive) throw new Error('玩家无效！');
 
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
 
@@ -454,7 +454,7 @@ class LiarsDeckGame {
     this.addLog(`📜 【${caller.name}】发起了【恶魔契约】！正在翻开最近打出的 4 张牌...`);
     this.room.broadcastState();
 
-    setTimeout(() => {
+    this.room.setTimer(() => {
       // 检查是否 4 张牌全都是谎报（全都是假牌，无一是目标牌或 Joker）
       const isLieCard = (c) => c.rank !== targetRank && c.type !== 'JOKER';
       const allLies = last4Cards.every(isLieCard);
@@ -476,7 +476,7 @@ class LiarsDeckGame {
         this.addLog(`🔥 恶魔契约生效！4 张牌证实全为谎言！除【${caller.name}】外全场接受轮盘惩罚！`);
         this.room.broadcastState();
 
-        setTimeout(() => {
+        this.room.setTimer(() => {
           this.executeRouletteQueue(victims);
         }, 3200);
       } else {
@@ -496,7 +496,7 @@ class LiarsDeckGame {
         this.addLog(`⚡ 契约反噬！4 张牌并非全假！【${caller.name}】遭受反噬，自己直面轮盘赌！`);
         this.room.broadcastState();
 
-        setTimeout(() => {
+        this.room.setTimer(() => {
           this.executeRouletteQueue(victims);
         }, 3200);
       }
@@ -551,7 +551,7 @@ class LiarsDeckGame {
     this.room.broadcastState();
 
     // 阶段 2：等待 1.8 秒转轮瞄准动画播放后，实弹击发或空枪咔嗒！
-    setTimeout(() => {
+    this.room.setTimer(() => {
       if (isBang) {
         victim.isAlive = false;
         victim.deathCards = [...(victim.cards || [])];
@@ -581,7 +581,7 @@ class LiarsDeckGame {
       this.room.broadcastState();
 
       // 阶段 3：击发火光/青烟与战况展现 2.5 秒后，继续下一受罚者或判定胜负
-      setTimeout(() => {
+      this.room.setTimer(() => {
         this.executeRouletteQueue(victims, index + 1);
       }, 2500);
     }, 1800);
@@ -605,7 +605,7 @@ class LiarsDeckGame {
     this.addLog('⏳ 裁决结算完毕，4 秒后将洗牌发牌开启下一副新牌...');
     this.room.broadcastState();
 
-    this.nextHandTimer = setTimeout(() => {
+    this.nextHandTimer = this.room.setTimer(() => {
       this.nextHandTimer = null;
       this.startNextHand();
     }, 4000);
@@ -616,8 +616,8 @@ class LiarsDeckGame {
    */
   checkEndGame() {
     this.status = 'GAME_OVER';
-    if (this.turnTimer) clearTimeout(this.turnTimer);
-    if (this.nextHandTimer) clearTimeout(this.nextHandTimer);
+    if (this.turnTimer) this.room.clearTimer(this.turnTimer);
+    if (this.nextHandTimer) this.room.clearTimer(this.nextHandTimer);
 
     const alivePlayers = this.room.players.filter(p => p.isAlive && p.connected);
     if (alivePlayers.length === 1) {
@@ -642,14 +642,14 @@ class LiarsDeckGame {
     if (!curPlayer.isBot && curPlayer.connected && !curPlayer.isOffline) return;
 
     if (this.aiTimer) {
-      clearTimeout(this.aiTimer);
+      this.room.clearTimer(this.aiTimer);
       this.aiTimer = null;
     }
 
     // 拟真思考延迟 1400 ~ 2400ms
     const thinkDelay = Math.floor(1400 + Math.random() * 1000);
 
-    this.aiTimer = setTimeout(() => {
+    this.aiTimer = this.room.setTimer(() => {
       this.aiTimer = null;
       try {
         if (this.status !== 'PLAYING' || this.currentTurnPlayerId !== curPlayer.id) return;
@@ -784,7 +784,7 @@ class LiarsDeckGame {
       turnRemainingSeconds: this.turnDeadline > 0 ? Math.max(0, Math.ceil((this.turnDeadline - Date.now()) / 1000)) : null,
       revealEvent: this.revealEvent,
       rouletteEvent: this.rouletteEvent,
-      logs: [...this.logs],
+      logs: [...this.logs].slice(0, 20), // 战报裁剪（6.3）：快照只发最近 20 条
       players: this.room.players.map(p => {
         const isSelf = p.id === viewerPlayerId;
         const isGameOver = this.status === 'GAME_OVER';

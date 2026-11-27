@@ -107,6 +107,22 @@
           </div>
         </div>
 
+        <!-- P0 多房间：5 位房间码输入（8.2）。留空则进入默认大厅（单间模式 / 旧服务器兼容） -->
+        <div class="form-group">
+          <label>房间码（可选）：</label>
+          <input
+            v-model="roomCode"
+            type="text"
+            maxlength="5"
+            placeholder="如: R7K2M9，留空进入默认大厅"
+            class="input-box room-code-input"
+            style="text-transform: uppercase; letter-spacing: 4px;"
+          />
+          <div class="ip-tip">
+            🎫 输入房主分享的 5 位房间码直达对应牌桌；扫码 / 分享链接可自动填入
+          </div>
+        </div>
+
         <!-- 跨机联机指定房主 IP (仅在 App 客户端环境下提供，网页端自动直连当前主机) -->
         <div v-if="isEmbedded" class="form-group host-ip-group">
           <label>房主联机 IP 或云服务器地址：</label>
@@ -153,6 +169,21 @@
           </div>
           <div class="ip-tip">
             🔒 只有开启了暗号保护的私密云服务器需要输入，公开房间留空
+          </div>
+        </div>
+
+        <!-- P1-2 房间密码（私密房间需要，向房主索取） -->
+        <div class="form-group">
+          <label>房间密码（可选）：</label>
+          <input
+            v-model="joinRoomPassword"
+            type="text"
+            maxlength="20"
+            placeholder="加入设置了密码的私密房间时填写"
+            class="input-box key-input"
+          />
+          <div class="ip-tip">
+            🚪 与进服暗号不同：这是房主为单个房间设置的密码
           </div>
         </div>
 
@@ -427,6 +458,37 @@
           </div>
         </div>
 
+        <!-- 进服暗号（连私密云服务器建房时需要；本机建房/局域网建房无需填写） -->
+        <div class="form-group access-key-group">
+          <label>进服暗号（可选）：</label>
+          <div class="key-input-row">
+            <input
+              v-model="serverAccessKey"
+              type="text"
+              placeholder="仅当在设置了暗号的私密服务器上建房时填写"
+              class="input-box key-input"
+            />
+          </div>
+          <div class="ip-tip">
+            🔒 暗号由服务器启动时的 SERVER_ACCESS_KEY 决定；在公开服务器或自己手机/电脑上建房时留空即可
+          </div>
+        </div>
+
+        <!-- P1-2 房间密码（可选，为单个房间上锁） -->
+        <div class="form-group">
+          <label>房间密码（可选）：</label>
+          <input
+            v-model="createRoomPassword"
+            type="text"
+            maxlength="20"
+            placeholder="为房间上锁，朋友输码时需输入此密码"
+            class="input-box key-input"
+          />
+          <div class="ip-tip">
+            🚪 设置后其他人输房间码加入时必须填写此密码；留空则公开
+          </div>
+        </div>
+
         <button class="action-btn host-btn" @click="handleOpenHost">
           🔥 创建房间
         </button>
@@ -565,7 +627,16 @@ const disableSpectatorXrayDice = ref(false); // 🙈 观战无透视：默认关
 const dicePerPlayer = ref(5);           // 玩家手骰数量：3~10 颗，默认 5 颗
 const diceMaxPlayers = ref(4);          // 骰子模式上限：默认 4 人
 
-const activeTab = ref(urlParams.get('tab') === 'player' ? 'player' : 'host');
+const activeTab = ref(
+  urlParams.get('tab') === 'player' || urlParams.get('room')
+    ? 'player'
+    : 'host'
+);
+// P0 多房间（8.1/8.2）：?room=R7K2M9 直达预填，扫码 / 分享链接自动切到输码加入
+const roomCode = ref((urlParams.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5));
+// P1-2 房间密码
+const createRoomPassword = ref('');
+const joinRoomPassword = ref('');
 const playerName = ref('盲侠客');
 const selectedAvatar = ref('🤠');
 const hostName = ref('酒馆老板');
@@ -582,6 +653,8 @@ function handleJoinPlayer() {
   emit('join-player', {
     name: playerName.value.trim() || '酒馆醉客',
     avatar: selectedAvatar.value,
+    roomCode: roomCode.value.trim().toUpperCase(),
+    roomPassword: joinRoomPassword.value.trim(),
     targetHostIp: isEmbedded.value && targetHostIp.value ? targetHostIp.value.trim() : '',
     accessKey: serverAccessKey.value ? serverAccessKey.value.trim() : ''
   });
@@ -627,6 +700,7 @@ function handleOpenHost() {
     avatar: hostAvatar.value || '👑',
     mode: selectedMode.value,
     config,
+    password: createRoomPassword.value.trim(),
     accessKey: serverAccessKey.value ? serverAccessKey.value.trim() : ''
   });
 }

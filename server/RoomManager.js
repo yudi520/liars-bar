@@ -9,11 +9,64 @@ const LiarsDiceGame = require('./LiarsDiceGame');
 const { AIBot } = require('./AIBot');
 
 class RoomManager {
-  constructor(broadcastCallback) {
-    this.broadcastCallback = broadcastCallback;
+  /**
+   * @param {object|Function} options
+   *   - roomId: 所属房间号（仅日志/隔离标识）
+   *   - broadcast: 广播出口回调（注入后内部调用点无需改动，语义自动变为"本房间"）
+   *   - onFatalError: 定时器回调异常时的快速失败出口（10.1 定时器层）
+   * 兼容旧签名 new RoomManager(broadcastFn)。
+   */
+  constructor(options = {}) {
+    if (typeof options === 'function') {
+      options = { broadcast: options };
+    }
+    const { roomId = 'MAIN', broadcast = null, onFatalError = null } = options;
+    this.roomId = roomId;
+    this.broadcastCallback = broadcast;
+    this.onFatalError = onFatalError;
+    this._timers = new Set();    // P0 定时器注册表（5.3）：dispose 时全量清理
+    this._disposed = false;
     this.mode = 'LIARS_DECK'; // 默认模式：'LIARS_DECK' 骗子纸牌 · 恶魔模式，亦可切换为 'TEXAS_POKER' 或 'LIARS_DICE'
     this.players = [];         // 房间所有玩家列表
     this.game = this.createGame(this.mode);
+  }
+
+  /**
+   * 定时器注册表（5.3）：三个 Game 文件的 setTimeout/clearTimeout 统一经此收口，
+   * 房间销毁时 disposeTimers() 全量清理，防止"已关闭房间"持续广播并持有内存。
+   * 回调异常按 10.1 定时器层处理：快速失败，交由上层关闭房间。
+   */
+  setTimer(fn, ms) {
+    const t = setTimeout(() => {
+      this._timers.delete(t);
+      if (this._disposed) return;
+      try {
+        fn();
+      } catch (err) {
+        console.error(`[Room ${this.roomId}] 定时器回调异常:`, err);
+        if (typeof this.onFatalError === 'function') {
+          try {
+            this.onFatalError(err);
+          } catch (_) {}
+        }
+      }
+    }, ms);
+    this._timers.add(t);
+    return t;
+  }
+
+  clearTimer(t) {
+    if (!t) return;
+    clearTimeout(t);
+    this._timers.delete(t);
+  }
+
+  disposeTimers() {
+    this._disposed = true;
+    for (const t of this._timers) {
+      clearTimeout(t);
+    }
+    this._timers.clear();
   }
 
   createGame(mode) {
@@ -59,12 +112,16 @@ class RoomManager {
   }
 
   /**
-   * 玩家加入房间
+   * 玩家加入房间。
+   * 注意：断线重连（name 三条件重绑）已上移至 RoomRegistry.Room.join 统一处理（含同 IP
+   * 校验与 hostId 原子改写），本方法只负责"按 socketId 重入"与"全新席位"两条路径。
    */
   joinPlayer(socketId, { name, avatar, isHost = false, mode, config }) {
     // 若房主创建/加入房间且场上无活跃人类玩家，彻底重置为全新的大厅状态
+    // （1.2 #6 修复：对局中不再误清，仅大厅/结算阶段允许整体重置）
     const validModes = ['TEXAS_POKER', 'LIARS_DECK', 'LIARS_DICE'];
-    if (isHost && (this.players.length === 0 || this.players.every(p => !p.connected || p.isBot))) {
+    const canReset = this.game.status === 'LOBBY' || this.game.status === 'GAME_OVER';
+    if (isHost && canReset && (this.players.length === 0 || this.players.every(p => !p.connected || p.isBot))) {
       this.players = [];
       if (mode && validModes.includes(mode)) {
         this.mode = mode;
@@ -77,19 +134,6 @@ class RoomManager {
 
     if (isHost && config) {
       this.game.updateConfig(config);
-    }
-
-    // 若存在同名离线托管玩家，支持断线重连并恢复控制
-    let offlinePlayer = this.players.find(p => p.isOffline && p.name === name);
-    if (offlinePlayer) {
-      offlinePlayer.id = socketId;
-      offlinePlayer.connected = true;
-      offlinePlayer.isOffline = false;
-      offlinePlayer.isBot = false;
-      if (avatar) offlinePlayer.avatar = avatar;
-      this.game.addLog(`👋 玩家【${offlinePlayer.name}】重新连接上线，收回出战控制权！`);
-      this.broadcastState();
-      return offlinePlayer;
     }
 
     let player = this.players.find(p => p.id === socketId);
@@ -234,14 +278,9 @@ class RoomManager {
   }
 
   /**
-   * 房主随时解散/取消房间
+   * 房主解散房间已上移：CANCEL_ROOM 由 Room.close('host_disband') 处理（7.5），
+   * 本类不再提供 cancelRoom——解散是房间生命周期事件，不是状态机内部重置。
    */
-  cancelRoom(socketId) {
-    this.game.addLog('🚫 房主解散了骗子酒馆房间，全员退出！');
-    this.players = [];
-    this.game = this.createGame(this.mode);
-    this.broadcastState();
-  }
 
   /**
    * 房主修改房间规则

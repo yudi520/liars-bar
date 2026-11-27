@@ -11,6 +11,12 @@
       </div>
 
       <div class="header-actions">
+        <!-- P0 多房间：房间码徽章（点击复制分享，8.1/8.2） -->
+        <div v-if="state?.roomId && state.roomId !== 'MAIN'" class="room-code-pill" title="点击复制房间码" @click="copyRoomCode">
+          <span class="rc-label">🎫 房间码</span>
+          <span class="rc-code">#{{ state.roomId }}</span>
+        </div>
+
         <!-- 扫码加入药丸胶囊 -->
         <div class="lan-pill" @click="showQrModal = true">
           <span class="dot"></span>
@@ -406,6 +412,32 @@ const hostKeepRevealed = ref(false);
 const showHostSwitchDrawer = ref(false);
 const hostSwitchCandidates = ref([]);
 
+// P0 多房间：房间码一键复制（房主分享给朋友输码入座）
+function copyRoomCode() {
+  const code = props.state?.roomId || '';
+  if (!code) return;
+  const text = code.startsWith('#') ? code : `#${code}`;
+  const done = () => {
+    try {
+      // 轻量 toast：复用规则的浮层不合适，直接用浏览器提示条
+      console.log('[HostArena] 房间码已复制:', text);
+    } catch (_) {}
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(done).catch(() => {});
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = code;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch (_) {}
+  }
+}
+
 const hostPlayer = computed(() => {
   if (!props.state || !props.state.players) return null;
   return props.state.players.find(p => p.id === props.myId || p.isHost);
@@ -521,6 +553,40 @@ function toggleEliminateRule() {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* P0 多房间：房间码徽章 */
+.room-code-pill {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.16), rgba(245, 158, 11, 0.1));
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 20px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.room-code-pill:hover {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(245, 158, 11, 0.18));
+  border-color: #fbbf24;
+  transform: translateY(-1px);
+}
+
+.room-code-pill .rc-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 1px;
+}
+
+.room-code-pill .rc-code {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fef3c7;
+  letter-spacing: 2.5px;
+  font-family: 'Courier New', monospace;
 }
 
 .lan-pill {

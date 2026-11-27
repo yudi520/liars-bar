@@ -45,7 +45,7 @@ class TexasPokerGame {
 
   clearTurnTimer() {
     if (this.turnTimer) {
-      clearTimeout(this.turnTimer);
+      this.room.clearTimer(this.turnTimer);
       this.turnTimer = null;
     }
     this.turnDeadline = 0;
@@ -64,7 +64,7 @@ class TexasPokerGame {
     }
 
     this.turnDeadline = Date.now() + 20000;
-    this.turnTimer = setTimeout(() => {
+    this.turnTimer = this.room.setTimer(() => {
       this.turnTimer = null;
       this.handleTurnTimeout();
     }, 20000);
@@ -194,7 +194,7 @@ class TexasPokerGame {
    */
   startNextHand() {
     if (this.nextHandTimer) {
-      clearTimeout(this.nextHandTimer);
+      this.room.clearTimer(this.nextHandTimer);
       this.nextHandTimer = null;
     }
 
@@ -732,7 +732,7 @@ class TexasPokerGame {
       if (inHandPlayers.length === 1) {
         inHandPlayers[0].isWinner = true;
       }
-      setTimeout(() => {
+      this.room.setTimer(() => {
         this.rouletteEvent = null;
         this.checkHandFlowAfterLeave();
       }, 4500);
@@ -758,7 +758,7 @@ class TexasPokerGame {
     }
 
     // 延时等待头顶开枪动画播放完毕后，检查是否只剩一人或轮次推进
-    setTimeout(() => {
+    this.room.setTimer(() => {
       this.rouletteEvent = null;
       this.checkHandFlowAfterLeave();
     }, 4500);
@@ -921,7 +921,7 @@ class TexasPokerGame {
     this.room.broadcastState();
 
     // 先留出 15 秒比牌展示时间（看牌比对 10 秒 + 揭晓输赢 5 秒），随后自动关闭弹窗开启开枪裁决
-    setTimeout(() => {
+    this.room.setTimer(() => {
       // 依次让受罚者接受左轮开枪裁决
       this.executeNextPunishment(punishedPlayers, 0);
     }, 15000);
@@ -960,7 +960,7 @@ class TexasPokerGame {
     this.room.broadcastState();
 
     // 阶段 2：等待 1.8 秒转轮瞄准动画播放后，实弹击发或空枪生还！
-    setTimeout(() => {
+    this.room.setTimer(() => {
       if (roulette.isBang) {
         victim.isAlive = false;
         this.addLog(`💥 砰！【${victim.name}】枪火吞噬！第 ${victim.bulletsBet} 弹中弹淘汰！`);
@@ -980,7 +980,7 @@ class TexasPokerGame {
       this.room.broadcastState();
 
       // 阶段 3：火光青烟展示 2.5 秒后继续
-      setTimeout(() => {
+      this.room.setTimer(() => {
         this.rouletteEvent = null;
         this.executeNextPunishment(punishedPlayers, index + 1);
       }, 2500);
@@ -992,7 +992,7 @@ class TexasPokerGame {
    */
   checkEndGameOrNext() {
     if (this.nextHandTimer) {
-      clearTimeout(this.nextHandTimer);
+      this.room.clearTimer(this.nextHandTimer);
       this.nextHandTimer = null;
     }
 
@@ -1005,7 +1005,7 @@ class TexasPokerGame {
       this.room.broadcastState();
 
       this.addLog('⏳ 本副牌结算完成，5 秒后将自动发牌开启下一轮新牌...');
-      this.nextHandTimer = setTimeout(() => {
+      this.nextHandTimer = this.room.setTimer(() => {
         this.nextHandTimer = null;
         if (this.status === 'HAND_SUMMARY') {
           this.startNextHand();
@@ -1043,7 +1043,7 @@ class TexasPokerGame {
 
     // 拟真思考延迟 800ms ~ 1800ms
     const delay = Math.floor(Math.random() * 1000) + 800;
-    setTimeout(() => {
+    this.room.setTimer(() => {
       if (this.status !== 'BETTING' || this.currentTurnPlayerId !== player.id) return;
       this.makeAIDecision(player);
     }, delay);
@@ -1069,7 +1069,7 @@ class TexasPokerGame {
             const chosenCard = sorted[0];
             this.actionSwitch(player.id, minIdx, chosenCard);
             // 换牌后在牌桌上展示广播，拟真思考延迟 1200ms 后再由 AI 继续决策跟注或弃牌
-            setTimeout(() => {
+            this.room.setTimer(() => {
               if (this.status === 'BETTING' && this.currentTurnPlayerId === player.id) {
                 this.continueAIDecision(player);
               }

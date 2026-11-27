@@ -62,6 +62,9 @@
       </div>
 
       <div class="header-actions">
+        <!-- P0 多房间：房间码徽章（点击复制分享） -->
+        <RoomCodePill v-if="state?.roomId && state.roomId !== 'MAIN'" :room-id="state.roomId" />
+
         <!-- 终局战报入口 -->
         <button
           v-if="state.status === 'GAME_OVER'"
@@ -600,6 +603,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import PokerCard from './PokerCard.vue';
 import HeadShooterOverlay from './HeadShooterOverlay.vue';
 import LiarsDeckGuide from './LiarsDeckGuide.vue';
+import RoomCodePill from './RoomCodePill.vue';
 import { sounds } from '../utils/audio';
 
 const props = defineProps({

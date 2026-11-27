@@ -11,3 +11,11 @@ services:
       - PORT=9527
       - SERVER_ACCESS_KEY=${SERVER_ACCESS_KEY:-}
       - IS_PUBLIC_CLOUD=true
+      # 多房间（IS_PUBLIC_CLOUD=true 时默认开启，下列均可选）
+      - MAX_ROOMS=${MAX_ROOMS:-500}
+      - MAX_ROOMS_PER_IP=${MAX_ROOMS_PER_IP:-20}
+      # P1 安全（房间密码无需服务器配置，房主建房时自设）
+      - HOST_RESUME_SAME_IP_ONLY=${HOST_RESUME_SAME_IP_ONLY:-true}
+      - RATE_LIMIT_PER_SEC=${RATE_LIMIT_PER_SEC:-10}
+      # P1 可观测性（默认关闭；开启后 /api/metrics?key=SERVER_ACCESS_KEY 访问）
+      - METRICS_ENABLED=${METRICS_ENABLED:-false}

@@ -1,15 +1,58 @@
-@chcp 65001 >nul
+@chcp 936 >nul
 @echo off
 cd /d "%~dp0"
-title éª—å­é…’é¦† - Liars Bar
+title Æ­×Ó¾Æ¹İ - Liars Bar
 echo ========================================
-echo   éª—å­é…’é¦† (Liar's Bar) ä¸€é”®å¯åŠ¨æœåŠ¡
+echo   Æ­×Ó¾Æ¹İ (Liar's Bar) Ò»¼üÆô¶¯·şÎñ
 echo ========================================
 echo.
-echo [1/2] æ­£åœ¨ç¼–è¯‘å‰ç«¯ H5 é™æ€èµ„æº...
+echo  ÇëÑ¡ÔñÆô¶¯Ä£Ê½£º
+echo.
+echo   [1] ¶à·¿¼äÄ£Ê½ - ¿ÉÍ¬Ê±¿ª¶à×À, ·¿Ö÷½çÃæÏÔÊ¾·¿¼äÂë,
+echo       ÅóÓÑÊäÂëÈë×ù (¶à·¿¼ä¹¦ÄÜ²âÊÔÓÃÕâ¸ö)
+echo   [2] µ¥¼äÄ£Ê½ - µÈ¼Û¸ÄÔìÇ°ÏÖ×´ (¾É APK / ¾ÖÓòÍøµ¥×À¼æÈİÑéÖ¤)
+echo   [3] ÔËĞĞ×Ô¶¯»¯²âÊÔ (npm test, ²»Æô¶¯·şÎñÆ÷)
+echo.
+choice /C 123 /N /M "ÇëÊäÈëÑ¡Ïî [1/2/3]: "
+
+if errorlevel 3 goto runtest
+if errorlevel 2 goto single
+if errorlevel 1 goto multi
+
+:multi
+set MULTI_ROOM_ENABLED=true
+set MODE_NAME=¶à·¿¼äÄ£Ê½
+goto build
+
+:single
+set MULTI_ROOM_ENABLED=false
+set MODE_NAME=µ¥¼äÄ£Ê½(µÈ¼ÛÏÖ×´)
+goto build
+
+:build
+echo.
+echo µ±Ç°Ä£Ê½£º%MODE_NAME%
+echo [1/2] ÕıÔÚ±àÒëÇ°¶Ë H5 ¾²Ì¬×ÊÔ´...
 call npm.cmd run build
+if errorlevel 1 (
+  echo.
+  echo [´íÎó] Ç°¶Ë±àÒëÊ§°Ü, Çë¼ì²éÉÏ·½±¨´íĞÅÏ¢¡£
+  pause
+  exit /b 1
+)
 echo.
-echo [2/2] æ­£åœ¨å¼€å¯é…’é¦†æœåŠ¡å™¨å¹¶å”¤èµ·æµè§ˆå™¨...
-start http://localhost:9527
+echo [2/2] ÕıÔÚ¿ªÆô¾Æ¹İ·şÎñÆ÷²¢»½Æğä¯ÀÀÆ÷...
+echo ÌáÊ¾: Ë«·¿²âÊÔÇëÓÃ¡¸ÆÕÍ¨´°¿Ú + ÎŞºÛ´°¿Ú¡¹¸÷¿ªÒ»¸öÒ³Ãæ;
+echo       Èô 9527 ¶Ë¿Ú±»Õ¼ÓÃ, ·şÎñÆ÷»á×Ô¶¯»»¶Ë¿Ú, ÒÔºá·ùÊµ¼ÊµØÖ·Îª×¼¡£
+echo.
+start "" http://localhost:9527
 node server/embedded-server.js
+pause
+exit /b 0
+
+:runtest
+echo.
+echo ÕıÔÚÔËĞĞ×Ô¶¯»¯²âÊÔ (¼ÈÓĞ¹æÔò + ¶à·¿¼äµ¥Ôª + Ë«Ä£Ê½ e2e)...
+call npm.cmd test
+echo.
 pause

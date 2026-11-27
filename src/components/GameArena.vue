@@ -58,6 +58,9 @@
       </div>
 
       <div class="header-actions">
+        <!-- P0 多房间：房间码徽章（点击复制分享） -->
+        <RoomCodePill v-if="state?.roomId && state.roomId !== 'MAIN'" :room-id="state.roomId" />
+
         <!-- 好友联机加入链接胶囊 -->
         <div class="lan-pill" title="查看并复制联机加入链接" @click="openLinkModal">
           <span class="dot"></span>
@@ -648,6 +651,7 @@ import HandRankGuide from './HandRankGuide.vue';
 import SwitchDrawer from './SwitchDrawer.vue';
 import PokerCard from './PokerCard.vue';
 import ShowdownModal from './ShowdownModal.vue';
+import RoomCodePill from './RoomCodePill.vue';
 import { socketService } from '../api/socketService';
 import { sounds } from '../utils/audio';
 
